@@ -23,18 +23,66 @@ class _MainAppState extends State<MainApp> {
   final TextEditingController _messageController = TextEditingController();
   FirebaseFirestore database = FirebaseFirestore.instance;
   late CollectionReference messagesCollection;
+  late Query<Object?> messagesQuery;
   late Stream<QuerySnapshot> messagesStream;
+  late ScrollController _scrollController;
+  int limit = 10;
+  bool shouldAutoScroll = true;
 
   @override
   void initState() {
     super.initState();
-
+    _scrollController = ScrollController();
     messagesCollection = database.collection('messages');
-    messagesStream = messagesCollection.snapshots();
+    messagesQuery =
+        messagesCollection.orderBy('timestamp', descending: true).limit(limit);
+    messagesStream = messagesQuery.snapshots();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollController.addListener(() {
+        if (_scrollController.position.pixels == 0) {
+          print('Reached the top');
+          setState(() {
+            shouldAutoScroll = false;
+            limit += 10;
+            messagesQuery = messagesCollection
+                .orderBy('timestamp', descending: false)
+                .limit(limit);
+            messagesStream = messagesQuery.snapshots();
+          });
+        }
+        if (_scrollController.position.pixels ==
+            _scrollController.position.maxScrollExtent) {
+          print('Reached the bottom');
+          setState(() {
+            shouldAutoScroll = true;
+          });
+        }
+      });
+    });
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> createDocument() async {
-    await messagesCollection.add({'name': _messageController.text});
+    if (_messageController.text.isEmpty) {
+      return;
+    }
+    await messagesCollection.add({
+      'content': _messageController.text,
+      'timestamp': FieldValue.serverTimestamp(),
+      'sender': 'user',
+    });
     _messageController.clear();
   }
 
@@ -72,18 +120,106 @@ class _MainAppState extends State<MainApp> {
                                 child: Text('No documents found'));
                           }
 
-                          return ListView(
-                              children: snapshot.data!.docs.map((doc) {
-                            return Card(
-                              child: ListTile(
-                                title: Text(doc['name']),
-                                trailing: IconButton(
-                                  onPressed: () => deleteDocument(doc.id),
-                                  icon: const Icon(Icons.delete),
-                                ),
-                              ),
-                            );
-                          }).toList());
+                          if (snapshot.hasData) {
+                            if (shouldAutoScroll) {
+                              _scrollToBottom();
+                            }
+                          }
+
+                          List<DocumentSnapshot> messages = snapshot.data!.docs;
+                          messages.sort((a, b) {
+                            if (a['timestamp'] == null) {
+                              return 1;
+                            }
+                            if (b['timestamp'] == null) {
+                              return -1;
+                            }
+                            return a['timestamp'].compareTo(b['timestamp']);
+                          });
+
+                          return SingleChildScrollView(
+                              controller: _scrollController,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.max,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children:
+                                            snapshot.data!.docs.map((doc) {
+                                          return Row(
+                                            mainAxisAlignment:
+                                                doc['sender'] == 'user'
+                                                    ? MainAxisAlignment.end
+                                                    : MainAxisAlignment.start,
+                                            children: [
+                                              Flexible(
+                                                child: Card(
+                                                  color: doc['sender'] == 'user'
+                                                      ? Colors.blue
+                                                      : Colors.green,
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Flexible(
+                                                        child: Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .all(8.0),
+                                                          child: Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .start,
+                                                            children: [
+                                                              Text(
+                                                                doc['content'],
+                                                                style: const TextStyle(
+                                                                    color: Colors
+                                                                        .white),
+                                                                softWrap: true,
+                                                              ),
+                                                              Text(
+                                                                  doc['timestamp']
+                                                                          ?.toDate()
+                                                                          .toString() ??
+                                                                      '',
+                                                                  style: TextStyle(
+                                                                      color: doc[
+                                                                                  'sender'] ==
+                                                                              'user'
+                                                                          ? Colors.blue[
+                                                                              200]
+                                                                          : Colors.green[
+                                                                              200],
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontStyle:
+                                                                          FontStyle
+                                                                              .italic)),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        onPressed: () =>
+                                                            deleteDocument(
+                                                                doc.id),
+                                                        icon: const Icon(
+                                                            Icons.delete,
+                                                            color:
+                                                                Colors.white),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }).toList()),
+                                  ),
+                                ],
+                              ));
                         }),
                   ),
                   const SizedBox(height: 16),
@@ -100,6 +236,7 @@ class _MainAppState extends State<MainApp> {
                     trailing: IconButton(
                       onPressed: () => createDocument(),
                       icon: const Icon(Icons.send),
+                      color: Colors.blue,
                     ),
                   ),
                 ],
@@ -109,5 +246,12 @@ class _MainAppState extends State<MainApp> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _messageController.dispose();
+    super.dispose();
   }
 }
