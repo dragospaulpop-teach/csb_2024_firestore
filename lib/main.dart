@@ -20,31 +20,26 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  final List<DocumentSnapshot> documents = [];
   final TextEditingController _messageController = TextEditingController();
-  FirebaseFirestore firestore = FirebaseFirestore.instance;
-  late CollectionReference collection;
+  FirebaseFirestore database = FirebaseFirestore.instance;
+  late CollectionReference messagesCollection;
+  late Stream<QuerySnapshot> messagesStream;
 
   @override
   void initState() {
     super.initState();
 
-    collection = firestore.collection('documents');
-    collection.snapshots().listen((event) {
-      setState(() {
-        documents.clear();
-        documents.addAll(event.docs);
-      });
-    });
+    messagesCollection = database.collection('messages');
+    messagesStream = messagesCollection.snapshots();
   }
 
   Future<void> createDocument() async {
-    await collection.add({'name': _messageController.text});
+    await messagesCollection.add({'name': _messageController.text});
     _messageController.clear();
   }
 
   Future<void> deleteDocument(String id) async {
-    await collection.doc(id).delete();
+    await messagesCollection.doc(id).delete();
   }
 
   @override
@@ -59,23 +54,37 @@ class _MainAppState extends State<MainApp> {
                 mainAxisSize: MainAxisSize.max,
                 children: [
                   Expanded(
-                    child: documents.isEmpty
-                        ? const Center(child: Text('No documents found'))
-                        : ListView.builder(
-                            itemCount: documents.length,
-                            itemBuilder: (context, index) {
-                              final doc = documents[index];
-                              return Card(
-                                child: ListTile(
-                                  title: Text(doc['name']),
-                                  trailing: IconButton(
-                                    onPressed: () => deleteDocument(doc.id),
-                                    icon: const Icon(Icons.delete),
-                                  ),
+                    child: StreamBuilder<QuerySnapshot>(
+                        stream: messagesStream,
+                        builder: (BuildContext context,
+                            AsyncSnapshot<QuerySnapshot> snapshot) {
+                          if (snapshot.hasError) {
+                            return const Center(child: Text('Error'));
+                          }
+
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(child: Text('Loading...'));
+                          }
+
+                          if (snapshot.data!.docs.isEmpty) {
+                            return const Center(
+                                child: Text('No documents found'));
+                          }
+
+                          return ListView(
+                              children: snapshot.data!.docs.map((doc) {
+                            return Card(
+                              child: ListTile(
+                                title: Text(doc['name']),
+                                trailing: IconButton(
+                                  onPressed: () => deleteDocument(doc.id),
+                                  icon: const Icon(Icons.delete),
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            );
+                          }).toList());
+                        }),
                   ),
                   const SizedBox(height: 16),
                   ListTile(
