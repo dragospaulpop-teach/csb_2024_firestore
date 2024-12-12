@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "228974502419",
+    "project_id": "csb-2024",
+    "storage_bucket": "csb-2024.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:228974502419:android:eebb943162f318b92dd5e6",
+        "android_client_info": {
+          "package_name": "club.dragos.csb"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD97gdShUHIm4MyvVNEB3Tc_ZjnAU4d_LQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
