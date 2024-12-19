@@ -1,4 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:csb_firebase/chat.dart';
+import 'package:csb_firebase/signin.dart';
+import 'package:csb_firebase/signup.dart';
+import 'package:csb_firebase/verify_email.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -9,6 +13,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
   runApp(const MainApp());
 }
 
@@ -20,238 +25,38 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  final TextEditingController _messageController = TextEditingController();
-  FirebaseFirestore database = FirebaseFirestore.instance;
-  late CollectionReference messagesCollection;
-  late Query<Object?> messagesQuery;
-  late Stream<QuerySnapshot> messagesStream;
-  late ScrollController _scrollController;
-  int limit = 10;
-  bool shouldAutoScroll = true;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  final auth = FirebaseAuth.instance;
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
-    messagesCollection = database.collection('messages');
-    messagesQuery =
-        messagesCollection.orderBy('timestamp', descending: true).limit(limit);
-    messagesStream = messagesQuery.snapshots();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollController.addListener(() {
-        if (_scrollController.position.pixels == 0) {
-          print('Reached the top');
-          setState(() {
-            shouldAutoScroll = false;
-            limit += 10;
-            messagesQuery = messagesCollection
-                .orderBy('timestamp', descending: false)
-                .limit(limit);
-            messagesStream = messagesQuery.snapshots();
-          });
+    auth.authStateChanges().listen((User? user) {
+      if (user != null) {
+        if (!user.emailVerified) {
+          _navigatorKey.currentState?.pushNamed('verifyEmail');
+        } else {
+          _navigatorKey.currentState?.pushNamed('/');
         }
-        if (_scrollController.position.pixels ==
-            _scrollController.position.maxScrollExtent) {
-          print('Reached the bottom');
-          setState(() {
-            shouldAutoScroll = true;
-          });
-        }
-      });
-    });
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+      } else {
+        _navigatorKey.currentState?.pushNamed('signIn');
       }
     });
-  }
-
-  Future<void> createDocument() async {
-    if (_messageController.text.isEmpty) {
-      return;
-    }
-    await messagesCollection.add({
-      'content': _messageController.text,
-      'timestamp': FieldValue.serverTimestamp(),
-      'sender': 'user',
-    });
-    _messageController.clear();
-  }
-
-  Future<void> deleteDocument(String id) async {
-    await messagesCollection.doc(id).delete();
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                        stream: messagesStream,
-                        builder: (BuildContext context,
-                            AsyncSnapshot<QuerySnapshot> snapshot) {
-                          if (snapshot.hasError) {
-                            return const Center(child: Text('Error'));
-                          }
-
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(child: Text('Loading...'));
-                          }
-
-                          if (snapshot.data!.docs.isEmpty) {
-                            return const Center(
-                                child: Text('No documents found'));
-                          }
-
-                          if (snapshot.hasData) {
-                            if (shouldAutoScroll) {
-                              _scrollToBottom();
-                            }
-                          }
-
-                          List<DocumentSnapshot> messages = snapshot.data!.docs;
-                          messages.sort((a, b) {
-                            if (a['timestamp'] == null) {
-                              return 1;
-                            }
-                            if (b['timestamp'] == null) {
-                              return -1;
-                            }
-                            return a['timestamp'].compareTo(b['timestamp']);
-                          });
-
-                          return SingleChildScrollView(
-                              controller: _scrollController,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.max,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children:
-                                            snapshot.data!.docs.map((doc) {
-                                          return Row(
-                                            mainAxisAlignment:
-                                                doc['sender'] == 'user'
-                                                    ? MainAxisAlignment.end
-                                                    : MainAxisAlignment.start,
-                                            children: [
-                                              Flexible(
-                                                child: Card(
-                                                  color: doc['sender'] == 'user'
-                                                      ? Colors.blue
-                                                      : Colors.green,
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      Flexible(
-                                                        child: Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(8.0),
-                                                          child: Column(
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
-                                                              Text(
-                                                                doc['content'],
-                                                                style: const TextStyle(
-                                                                    color: Colors
-                                                                        .white),
-                                                                softWrap: true,
-                                                              ),
-                                                              Text(
-                                                                  doc['timestamp']
-                                                                          ?.toDate()
-                                                                          .toString() ??
-                                                                      '',
-                                                                  style: TextStyle(
-                                                                      color: doc[
-                                                                                  'sender'] ==
-                                                                              'user'
-                                                                          ? Colors.blue[
-                                                                              200]
-                                                                          : Colors.green[
-                                                                              200],
-                                                                      fontSize:
-                                                                          11,
-                                                                      fontStyle:
-                                                                          FontStyle
-                                                                              .italic)),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      IconButton(
-                                                        onPressed: () =>
-                                                            deleteDocument(
-                                                                doc.id),
-                                                        icon: const Icon(
-                                                            Icons.delete,
-                                                            color:
-                                                                Colors.white),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        }).toList()),
-                                  ),
-                                ],
-                              ));
-                        }),
-                  ),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    title: TextField(
-                      maxLines: 4,
-                      minLines: 1,
-                      controller: _messageController,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter message',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    trailing: IconButton(
-                      onPressed: () => createDocument(),
-                      icon: const Icon(Icons.send),
-                      color: Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      navigatorKey: _navigatorKey,
+      debugShowCheckedModeBanner: false,
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const Chat(),
+        'signIn': (context) => const SignInPage(),
+        'signUp': (context) => const SignUpPage(),
+        'verifyEmail': (context) => VerifyEmailPage(),
+      },
     );
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    _messageController.dispose();
-    super.dispose();
   }
 }
